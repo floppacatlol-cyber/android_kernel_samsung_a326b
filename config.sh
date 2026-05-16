@@ -5,7 +5,7 @@
 
 # Device Config
 export DEVICE="a32x"
-export DEFCONFIG="a32x_defconfig"
+export DEFCONFIG="rufnx_defconfig"
 export KBUILD_BUILD_USER="ron144"
 export KBUILD_BUILD_HOST="ron144"
 
@@ -15,7 +15,6 @@ export LOG_FILE="$SRC/build.log"
 export OUT_DIR="$SRC/out"
 export ANYKERNEL_DIR="$SRC/AnyKernel3"
 export OUTPUT_DIR="$SRC/output"
-
 # Toolchain URLs
 export GCC_URL="https://github.com/H33CKER/toolchains"
 export GCC_BRANCH="gcc-4.9" #gcc-4.9 or gcc-6.4
