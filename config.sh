@@ -32,7 +32,7 @@ export KSU_URL="https://github.com/KernelSU-Next/KernelSU-Next.git"
 export KSU_BRANCH="legacy"
 
 # SUSFS
-export ENABLE_SUSFS=1
+export ENABLE_SUSFS=0
 export SUSFS_URL="https://gitlab.com/simonpunk/susfs4ksu.git"
 export SUSFS_BRANCH="kernel-4.14"
 export SUSFS_DIR="$SRC/susfs4ksu"
