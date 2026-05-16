@@ -1,0 +1,53 @@
+name: Build Kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 3600
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Pre-build cleanup (folders only)
+        run: |
+          cd "$GITHUB_WORKSPACE"
+
+          echo "Deleting build.log"
+          rm -rf build.log && git pull
+
+          echo "Deleting build-related folders"
+          rm -rf clang AnyKernel3 susfs4ksu KernelSU-Next
+
+      - name: Run build script
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          bash build.sh
+
+      - name: Commit and push build output
+        if: always()
+        run: |
+          cd "$GITHUB_WORKSPACE"
+
+          echo "Removing nested git repos before commit"
+          find . -type d -name ".git" -not -path "./.git" -exec rm -rf {} +
+
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "Build output from GitHub Actions"
+          git push origin HEAD:${{ github.ref_name }}
+

@@ -1,0 +1,115 @@
+name: debug-tmate
+
+on:
+  workflow_dispatch:
+
+# Ensure the token has write access to the repository
+permissions:
+  contents: write
+
+jobs:
+  tmate-session:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 3600
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update system and install tmate
+        run: |
+          sudo apt update
+          sudo apt install -y tmate
+
+      - name: Set hostname to ubuntu
+        run: |
+          sudo hostnamectl set-hostname ubuntu
+
+      - name: Create user 'ubuntu' with password 'ubuntu' and sudo privileges
+        run: |
+          sudo useradd -m -s /bin/bash ubuntu
+          echo 'ubuntu:ubuntu' | sudo chpasswd
+          sudo usermod -aG sudo ubuntu
+          echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/ubuntu
+
+      - name: Allow ubuntu to write to the repository
+        run: |
+          RUNNER_GROUP=$(id -gn runner)
+          sudo usermod -aG "$RUNNER_GROUP" ubuntu
+          sudo chown -R runner:"$RUNNER_GROUP" "$GITHUB_WORKSPACE"
+          sudo chmod -R g+rw "$GITHUB_WORKSPACE"
+          sudo find "$GITHUB_WORKSPACE" -type d -exec chmod g+s {} \;
+
+      - name: Create quitnsave script
+        run: |
+          sudo tee /usr/local/bin/quitnsave > /dev/null <<'EOF'
+          #!/bin/bash
+          # Re-run with sudo if not root
+          if [ "$EUID" -ne 0 ]; then
+              exec sudo "$0" "$@"
+          fi
+
+          # Locate repository
+          REPO_DIR=$(find /home/runner/work -name .git -type d -exec dirname {} \; 2>/dev/null | head -1)
+          if [ -z "$REPO_DIR" ]; then
+              echo "No git repository found."
+              exit 1
+          fi
+          cd "$REPO_DIR"
+
+          # Configure git user (required for commit)
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+          # Add and commit
+          git add .
+          if git diff --cached --quiet; then
+              echo "Nothing to commit."
+              exit 0
+          fi
+          git commit -m "Auto-save from tmate session"
+
+          # Get the authenticated remote URL from local config
+          REMOTE_URL=$(git config --get remote.origin.url)
+          if [ -z "$REMOTE_URL" ]; then
+              echo "No remote origin found."
+              exit 1
+          fi
+
+          # Push using the exact URL (contains token)
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "Pushing to $REMOTE_URL (branch $CURRENT_BRANCH)"
+          if git push "$REMOTE_URL" HEAD:"$CURRENT_BRANCH"; then
+              # Signal runner to quit only after successful push
+              touch /tmp/quit
+              echo "Changes saved. Workflow will exit shortly."
+          else
+              echo "Push failed. Check the error above."
+              exit 1
+          fi
+          EOF
+          sudo chmod +x /usr/local/bin/quitnsave
+
+      - name: Launch tmate as user ubuntu
+        run: |
+          SOCKET="/tmp/tmate-$(date +%s).sock"
+          sudo -u ubuntu bash <<EOF &
+          cd "$GITHUB_WORKSPACE"
+          tmate -S "$SOCKET" new-session -d
+          tmate -S "$SOCKET" wait tmate-ready
+          SSH_URL=\$(tmate -S "$SOCKET" display -p '#{tmate_ssh}')
+          echo "\$SSH_URL" > /tmp/tmate_url
+          EOF
+
+          while [ ! -f /tmp/tmate_url ]; do sleep 1; done
+          TMATE_URL=$(cat /tmp/tmate_url)
+          echo "$TMATE_URL"
+
+      - name: Keep runner alive until quit signal
+        run: |
+          echo "Tmate session active. Connect using the link above."
+          echo "Type 'quitnsave' to commit all changes and end the job."
+          while [ ! -f /tmp/quit ]; do
+            sleep 5
+          done
+          echo "Quit signal received. Ending job."
